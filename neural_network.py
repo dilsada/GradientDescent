@@ -10,7 +10,6 @@ class NeuralNetworkClassifier:
         self.b = []
         self.activations = activations
         self.model_state = {"linear_outputs": [], "activation_outputs": []}
-        self.gradients = {"dW": [], "db": []}
 
         sigma = 0.01
         for i in range(1, self.layers + 1):
@@ -24,18 +23,15 @@ class NeuralNetworkClassifier:
             print("Last activation layer should be softmax.")
     
     # Activation Functions
-    @staticmethod
-    def sigmoid(x):
+    def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
     
-    @staticmethod
-    def relu(x):
+    def relu(self, x):
         return np.maximum(0.0, x)
     
-    @staticmethod
-    def softmax(x):
+    def softmax(self, x):
         e_x = np.exp(x - np.max(x))
-        return e_x / np.sum(e_x, axis=0, keepdims=True)
+        return e_x / np.sum(e_x, axis=0)
     
     # Forward Propagation
     def linear_forward(self, A_prev, W, b):
@@ -60,7 +56,8 @@ class NeuralNetworkClassifier:
     def model_forward(self, x):
         """ param x: the input data
         """
-        self.model_state["activation_outputs"].append(np.copy(x.T))
+        self.model_state["activation_outputs"] = [np.copy(x.T)]
+        self.model_state["linear_outputs"] = []
 
         for l in range(self.layers):
             linear_output = self.linear_forward(self.model_state["activation_outputs"][-1], self.W[l], self.b[l])
@@ -78,17 +75,16 @@ class NeuralNetworkClassifier:
         if np.max(z) > 0:
             z -= np.max(z)
         loss = np.sum(np.log(np.sum(np.exp(z), axis=0)) - np.sum(z[y==1])) / y.shape[1]
-        loss2 = np.linalg.norm(y - self.model_state["activation_outputs"][-1].T)
-        return loss2
+        #loss2 = np.linalg.norm(y - self.model_state["activation_outputs"][-1].T)
+        return loss
     
     # Activation Functions Derivatives
-    @staticmethod
-    def sigmoid_backward(x):
-        return np.exp(-x) / ((1 + np.exp(-x)) ** 2)
+    def sigmoid_backward(self, x):
+        #return np.exp(-x) / ((1 + np.exp(-x)) ** 2)
+        return self.sigmoid(x) * (1 - self.sigmoid(x))
     
-    @staticmethod
-    def relu_backward(x):
-        return [0 if i < 0 else 1 for i in x]
+    def relu_backward(self, x):
+        return [[0 if i < 0 else 1 for i in y] for y in x]
     
     # Backwards Propogation
     def linear_backward(self, W, delta):
@@ -103,6 +99,7 @@ class NeuralNetworkClassifier:
     def model_backward(self, Y):
         data_points = Y.shape[0]
         deltas = [None] * self.layers
+        self.gradients = {"dW": [], "db": []}
         
         activation_output = self.model_state["activation_outputs"][-1]
         deltas[-1] = ((Y.T - activation_output))
@@ -122,26 +119,34 @@ class NeuralNetworkClassifier:
     def predict(self, x):
         return self.model_forward(x)
 
-    def random_mini_batches(self, x, y, batch_size = 64, use_mini_batch = False):
-        if use_mini_batch == False:
+    def random_mini_batches(self, x, y, batch_size = 64):
+        if batch_size == -1:
             return [x], [y]
+        
+        x, y = self.shuffle_data(x, y) # to make sure that the batches are different every time
+    
         x_mini = []
         y_mini = []
         i = 0
-        while i < y.shape[1]:
-            x_mini.append(x[:, i:i+batch_size])
-            y_mini.append(y[:, i:i+batch_size])
+        while(i < y.shape[0]):
+            x_mini.append( x[i:i+batch_size, :] )
+            y_mini.append( y[i:i+batch_size, :] )
             i += batch_size
+            
         return x_mini, y_mini
+        
+    def shuffle_data(self, a, b):
+        shuffled_indices = np.random.permutation(a.shape[0])
+        return a[shuffled_indices, :], b[shuffled_indices, :]
 
-    def train_model(self, x, y, iterations = 1, alpha = 0.01, batch_size = 64):
+    def train_model(self, x_train, y_train, iterations = 1, alpha = 0.01, batch_size = 64):
         losses = []
         
         for i in range(iterations):
-            self.model_forward(x)
-            self.model_backward(y)
+            self.model_forward(x_train)
+            self.model_backward(y_train)
             self.update_parameters(alpha)
-            losses.append(self.compute_loss(y))
+            losses.append(self.compute_loss(y_train))
             print("Loss \t{}: {}".format(i, losses[-1]))
         return losses
     
@@ -158,12 +163,14 @@ def main():
     X_train, Y_train, X_test, Y_test = load_mnist()
     print(X_train.shape, Y_train.shape, X_test.shape, Y_test.shape)
 
-    layer_dimensions = [X_train.shape[1], 512, 128, Y_train.shape[1]]
-    activations = ["sigmoid", "sigmoid", "softmax"]
+    #layer_dimensions = [X_train.shape[1], 512, 128, Y_train.shape[1]]
+    #activations = ["sigmoid", "relu", "softmax"]
+    layer_dimensions = [X_train.shape[1], 300, Y_train.shape[1]]
+    activations = ["sigmoid", "softmax"]
 
     model = NeuralNetworkClassifier(layer_dimensions, activations)
 
-    model.train_model(X_train, Y_train, 35, 0.01, 64)
+    model.train_model(X_train, Y_train, 50, 0.5)
 
     print(model.predict_accuracy(X_test, Y_test))
 
